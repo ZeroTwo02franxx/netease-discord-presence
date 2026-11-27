@@ -190,4 +190,19 @@ await Scenario(async (server, token) =>
 });
 Check(DefaultAppId.IsValid(DefaultAppId.Resolve()), "內建加密預設 Application ID 可正確還原且格式合法");
 Check(DefaultAppId.Resolve(" 999888777666555444 ") == "999888777666555444" && !DefaultAppId.IsValid("abc"), "自訂 Application ID 優先於內建預設並驗證格式");
+var legacyParsed = LegacyNeteaseReader.ParseWindowTitle("Calling My Phone - Lil Tjay / 6LACK");
+var legacyHyphen = LegacyNeteaseReader.ParseWindowTitle("晴天 - Live - 周杰伦");
+Check(legacyParsed == ("Calling My Phone", "Lil Tjay / 6LACK") && legacyHyphen == ("晴天 - Live", "周杰伦"), "舊版網易雲視窗標題可正確拆出歌名與歌手");
+Check(LegacyNeteaseReader.ParseWindowTitle("网易云音乐") is null && LegacyNeteaseReader.ParseWindowTitle("   ") is null, "舊版網易雲待機標題不誤判為歌曲");
+string legacyHistory = """
+[
+  {"track":{"name":"晴天","artists":[{"name":"其他歌手"}],"album":{"name":"別的專輯","picUrl":"http://p2.music.126.net/other.jpg"}}},
+  {"track":{"name":"晴天","artists":[{"name":"周杰伦"}],"album":{"name":"叶惠美","picUrl":"http://p1.music.126.net/jay.jpg"}}}
+]
+""";
+var legacyAlbum = AlbumMetadata.ParseByTitleAndArtist(legacyHistory, "晴天", "周杰伦");
+Check(legacyAlbum?.Name == "叶惠美" && legacyAlbum.CoverUrl == "https://p1.music.126.net/jay.jpg?param=512y512", "舊版 history 陣列可依歌名與歌手精準比對封面");
+Check(AlbumMetadata.ParseByTitleAndArtist("""[{"track":{"name":"歌","album":{"picUrl":"https://evil.example/a.jpg"}}}]""", "歌", "") is null, "舊版封面解析仍嚴格遵守網易雲網域白名單");
+var selfAudio = LegacyNeteaseReader.QueryAudioActivity(new HashSet<int> { Environment.ProcessId });
+Check(selfAudio is { SessionActive: false, HasPeak: false }, $"Core Audio 工作階段查詢正常運作 ({LegacyNeteaseReader.LastAudioError ?? selfAudio?.ToString() ?? "null"})");
 Console.WriteLine($"{passed} checks passed.");
