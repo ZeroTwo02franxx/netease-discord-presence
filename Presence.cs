@@ -50,6 +50,7 @@ public record Track(string Title, string Artist, string Album, bool Playing, dou
 public sealed class MediaReader : IDisposable
 {
     private readonly NeteaseTimeline native = new();
+    private readonly LegacyNeteaseReader legacy = new();
     private readonly AlbumMetadataReader albums = new();
     public string TimingDiagnostic { get; private set; } = "尚未讀取時間";
     private GlobalSystemMediaTransportControlsSessionManager? manager;
@@ -63,7 +64,19 @@ public sealed class MediaReader : IDisposable
         var session = sessions.Where(s => IsCloudMusic(s.SourceAppUserModelId))
             .OrderByDescending(s => s.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
             .FirstOrDefault();
-        if (session is null) return null;
+        if (session is null)
+        {
+            var legacyTrack = await Task.Run(legacy.Read);
+            if (legacyTrack is null)
+            {
+                if (legacy.ProcessDetected) Sessions += "\r\ncloudmusic.exe（舊版行程已開啟，等待播放歌曲）";
+                return null;
+            }
+            Sessions += "\r\ncloudmusic.exe（舊版視窗備援模式）";
+            TimingDiagnostic = legacy.Diagnostic;
+            var legacyMeta = await Task.Run(() => albums.ReadByTitle(legacyTrack.Title, legacyTrack.Artist));
+            return new(legacyTrack.Title, legacyTrack.Artist, legacyMeta?.Name ?? "", legacyTrack.Playing, 0, 0, legacyMeta?.CoverUrl ?? "");
+        }
         var properties = await session.TryGetMediaPropertiesAsync();
         var status = session.GetPlaybackInfo();
         var timeline = session.GetTimelineProperties();

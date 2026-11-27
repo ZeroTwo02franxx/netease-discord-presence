@@ -53,7 +53,7 @@
 | 項目 | 支援狀況 |
 | :--- | :--- |
 | **作業系統** | Windows 10（2004 以上）／ Windows 11（64 位元） |
-| **網易雲版本** | Windows 桌面版（需啟用系統媒體控制 SMTC；支援網易雲 v3 進度與封面讀取） |
+| **網易雲版本** | Windows 桌面版 3.x（完整支援進度條與封面）與 2.x 舊版（自動啟用視窗＋音訊備援模式，支援歌名、歌手、封面與暫停狀態） |
 | **Discord 版本** | Windows 桌面版（透過本機 IPC Named Pipe 通訊） |
 | **不支援項目** | 網頁版、手機版、同步歌詞 |
 
@@ -68,6 +68,7 @@
 <details>
 <summary><b>展開檢視技術細節（進度讀取與節流機制）</b></summary>
 
+- **舊版網易雲（2.x）備援**：若 Windows SMTC 未列出網易雲，程式會自動改從 `OrpheusBrowserHost` 視窗標題取得歌名與歌手（縮到系統匣仍可讀取），搭配本機 `WebData/file/history` 與 `playingList` 比對專輯封面，並透過 Windows Core Audio 工作階段偵測播放／暫停狀態。
 - **進度與封面**：優先使用 Windows SMTC；針對未提供 SMTC 時間的網易雲 v3，會比對 `cloudmusic.dll` 特徵碼並以唯讀權限（`PROCESS_VM_READ`）讀取歌曲 ID、播放狀態與進度欄位（不注入、不修改播放器），並比對本機 `WebData/file/playingList` 取得目前曲目之專輯封面。
 - **Discord 更新節流**：本機每 250ms 輪詢，一般狀態更新至少間隔 1 秒並遵守 20.1 秒滾動視窗上限（最多 5 次，保留 1 格給清除狀態）；正常播放由 Discord 自行推進進度條，僅於換歌、暫停、進度跳轉（> 2 秒）或每 30 秒保活時發送。斷線重試採 5 / 10 / 20 / 40 / 60 秒退避。
 
@@ -83,7 +84,7 @@
 # 建置專案
 dotnet build
 
-# 執行自動化測試（42 項檢查）
+# 執行自動化測試（47 項檢查）
 dotnet run --project tests/Tests.csproj
 
 # 打包單一免安裝獨立執行檔（win-x64）
@@ -97,6 +98,11 @@ dotnet publish CloudMusicPresence.csproj -c Release -r win-x64 --self-contained 
 ## 📋 近期版本紀錄
 
 完整發行檔案與歷史更新請見 **[GitHub Releases](https://github.com/ZeroTwo02franxx/netease-discord-presence/releases)**。
+
+### v1.4.5
+- 新增 **舊版網易雲（2.x）自動備援支援**：無須開啟系統媒體控制（SMTC）即可從視窗標題讀取歌名與歌手（含縮到系統匣狀態）。
+- 支援從本機 `history` / `playingList` 依歌名與歌手自動比對專輯封面。
+- 透過 Windows Core Audio 音訊工作階段與音量峰值偵測舊版網易雲的播放／暫停狀態。
 
 ### v1.4.4
 - 全新簡潔主介面，將多開帳號、自訂 Application ID 與來源診斷收納至「進階設定 ▾」。

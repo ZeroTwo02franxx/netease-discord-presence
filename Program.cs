@@ -51,7 +51,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "網易雲 × Discord · v1.4.4";
+        Text = "網易雲 × Discord · v1.4.5";
         ClientSize = new Size(560, CompactHeight);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;

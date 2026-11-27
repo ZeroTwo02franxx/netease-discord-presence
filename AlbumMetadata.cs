@@ -12,15 +12,65 @@ public record AlbumMetadata(string Name, string CoverUrl)
         foreach (var item in items.EnumerateArray())
         {
             if (!item.TryGetProperty("id", out var id) || id.ToString() != songId || !item.TryGetProperty("track", out var track)) continue;
-            if (!track.TryGetProperty("name", out var name) || !string.Equals(name.GetString()?.Normalize(NormalizationForm.FormKC).Trim(), expectedTitle.Normalize(NormalizationForm.FormKC).Trim(), StringComparison.Ordinal)) return null;
-            if (!track.TryGetProperty("album", out var album) && !track.TryGetProperty("al", out album)) return null;
-            string albumName = album.TryGetProperty("name", out var a) ? a.GetString() ?? "" : "";
-            string cover = album.TryGetProperty("cover", out var c) ? c.GetString() ?? "" : album.TryGetProperty("picUrl", out c) ? c.GetString() ?? "" : "";
-            string? url = NormalizeCoverUrl(cover);
-            return url is null ? null : new(albumName, url);
+            if (!track.TryGetProperty("name", out var name) || !EqualsNormalized(name.GetString(), expectedTitle)) return null;
+            return ExtractAlbum(track);
         }
         return null;
     }
+
+    public static AlbumMetadata? ParseByTitleAndArtist(string json, string expectedTitle, string expectedArtist)
+    {
+        if (string.IsNullOrWhiteSpace(expectedTitle)) return null;
+        using var document = JsonDocument.Parse(json);
+        JsonElement items;
+        if (document.RootElement.ValueKind == JsonValueKind.Array)
+            items = document.RootElement;
+        else if (document.RootElement.TryGetProperty("list", out var list) && list.ValueKind == JsonValueKind.Array)
+            items = list;
+        else if (document.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("historyList", out var hist) && hist.ValueKind == JsonValueKind.Array)
+            items = hist;
+        else
+            return null;
+
+        AlbumMetadata? titleOnlyFallback = null;
+        string normArtist = NormalizeText(expectedArtist);
+        foreach (var item in items.EnumerateArray())
+        {
+            var track = item.TryGetProperty("track", out var inner) && inner.ValueKind == JsonValueKind.Object ? inner : item;
+            if (!track.TryGetProperty("name", out var name) || !EqualsNormalized(name.GetString(), expectedTitle)) continue;
+            var meta = ExtractAlbum(track);
+            if (meta is null) continue;
+            if (normArtist.Length == 0 || ArtistsMatch(track, normArtist)) return meta;
+            titleOnlyFallback ??= meta;
+        }
+        return titleOnlyFallback;
+    }
+
+    private static AlbumMetadata? ExtractAlbum(JsonElement track)
+    {
+        if (!track.TryGetProperty("album", out var album) && !track.TryGetProperty("al", out album)) return null;
+        string albumName = album.TryGetProperty("name", out var a) ? a.GetString() ?? "" : "";
+        string cover = album.TryGetProperty("cover", out var c) ? c.GetString() ?? "" : album.TryGetProperty("picUrl", out c) ? c.GetString() ?? "" : "";
+        string? url = NormalizeCoverUrl(cover);
+        return url is null ? null : new(albumName, url);
+    }
+
+    private static bool ArtistsMatch(JsonElement track, string normalizedExpected)
+    {
+        if (!track.TryGetProperty("artists", out var artists) && !track.TryGetProperty("ar", out artists)) return false;
+        if (artists.ValueKind != JsonValueKind.Array) return false;
+        foreach (var artist in artists.EnumerateArray())
+        {
+            string artistName = artist.TryGetProperty("name", out var n) ? NormalizeText(n.GetString()) : "";
+            if (artistName.Length > 0 && normalizedExpected.Contains(artistName, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    private static string NormalizeText(string? value) => (value ?? "").Normalize(NormalizationForm.FormKC).Trim();
+
+    private static bool EqualsNormalized(string? actual, string expected) =>
+        string.Equals(NormalizeText(actual), NormalizeText(expected), StringComparison.Ordinal);
 
     public static string? NormalizeCoverUrl(string value)
     {
@@ -45,14 +95,31 @@ public sealed class AlbumMetadataReader
         key = next; cached = null; retry = DateTime.UtcNow.AddSeconds(5);
         if (songId.Length == 0) return null;
         string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetEase", "CloudMusic", "WebData", "file", "playingList");
+        cached = ReadFile(path, json => AlbumMetadata.Parse(json, songId, title));
+        return cached;
+    }
+
+    public AlbumMetadata? ReadByTitle(string title, string artist)
+    {
+        string next = "title\n" + title + "\n" + artist;
+        if (next == key && (cached is not null || DateTime.UtcNow < retry)) return cached;
+        key = next; cached = null; retry = DateTime.UtcNow.AddSeconds(5);
+        if (string.IsNullOrWhiteSpace(title)) return null;
+        string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetEase", "CloudMusic", "WebData", "file");
+        cached = ReadFile(Path.Combine(folder, "history"), json => AlbumMetadata.ParseByTitleAndArtist(json, title, artist))
+              ?? ReadFile(Path.Combine(folder, "playingList"), json => AlbumMetadata.ParseByTitleAndArtist(json, title, artist));
+        return cached;
+    }
+
+    private static AlbumMetadata? ReadFile(string path, Func<string, AlbumMetadata?> parser)
+    {
         try
         {
             using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             if (file.Length > 32 * 1024 * 1024) return null;
             using var reader = new StreamReader(file);
-            cached = AlbumMetadata.Parse(reader.ReadToEnd(), songId, title);
+            return parser(reader.ReadToEnd());
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
-        return cached;
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return null; }
     }
 }
