@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>CloudMusicPresence</AssemblyName>
+    <ApplicationIcon>assets\moonwave.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup><Compile Remove="tests\**" /><Compile Remove="probes\**" /></ItemGroup>
+  <ItemGroup><None Update="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="assets\moonwave.ico" LogicalName="CloudMusicPresence.AppIcon" /></ItemGroup>
+</Project>
